@@ -1368,7 +1368,7 @@ function drawCover(c,img,W,H,pf,blur){
   }else if(blur>0){
     // Fallback for browsers without ctx.filter (e.g. older Safari):
     // approximate gaussian blur by shrinking through halving passes, then scaling back up.
-    const passes=Math.max(1,Math.min(4,Math.round(Math.log2(blur/2+1))));
+    const passes=Math.max(1,Math.min(6,Math.round(Math.log2(blur*2))));
     let src=img, sw=r.w, sh=r.h;
     for(let i=0;i<passes;i++){
       const tw=Math.max(8,Math.round(sw/2)), th=Math.max(8,Math.round(sh/2));
