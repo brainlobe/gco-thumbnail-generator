@@ -1350,11 +1350,41 @@ function computeCover(img,W,H,pf){
   pf.ox=x-(W-iw)/2; pf.oy=y-(H-ih)/2;
   return {x,y,w:iw,h:ih};
 }
+let FILTER_OK=null;
+function canvasFilterOK(){
+  if(FILTER_OK===null){
+    const t=document.createElement('canvas').getContext('2d');
+    try{t.filter='blur(1px)';}catch(e){}
+    FILTER_OK=(t.filter==='blur(1px)');
+  }
+  return FILTER_OK;
+}
 function drawCover(c,img,W,H,pf,blur){
   const r=computeCover(img,W,H,pf);
-  if(blur>0){c.filter=`blur(${blur}px)`;}
-  c.drawImage(img,r.x,r.y,r.w,r.h);
-  c.filter='none';
+  if(blur>0&&canvasFilterOK()){
+    c.filter=`blur(${blur}px)`;
+    c.drawImage(img,r.x,r.y,r.w,r.h);
+    c.filter='none';
+  }else if(blur>0){
+    // Fallback for browsers without ctx.filter (e.g. older Safari):
+    // approximate gaussian blur by shrinking through halving passes, then scaling back up.
+    const passes=Math.max(1,Math.min(4,Math.round(Math.log2(blur/2+1))));
+    let src=img, sw=r.w, sh=r.h;
+    for(let i=0;i<passes;i++){
+      const tw=Math.max(8,Math.round(sw/2)), th=Math.max(8,Math.round(sh/2));
+      const t=document.createElement('canvas'); t.width=tw; t.height=th;
+      const tc=t.getContext('2d');
+      tc.imageSmoothingEnabled=true; tc.imageSmoothingQuality='high';
+      tc.drawImage(src,0,0,tw,th);
+      src=t; sw=tw; sh=th;
+    }
+    c.save();
+    c.imageSmoothingEnabled=true; c.imageSmoothingQuality='high';
+    c.drawImage(src,r.x,r.y,r.w,r.h);
+    c.restore();
+  }else{
+    c.drawImage(img,r.x,r.y,r.w,r.h);
+  }
 }
 function computeSubject(W,H,pf){
   const s=(H*0.92/state.sub.height)*pf.sscale;
