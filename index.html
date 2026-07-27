@@ -87,6 +87,10 @@
       <div class="row"><label>Subject scale</label><input type="range" id="subScale" min="30" max="250" value="100"><output>100%</output></div>
       <div class="row"><label>BG blur</label><input type="range" id="bgBlur" min="0" max="30" value="0"><output>0</output></div>
       <div class="row"><label>Shadow</label><input type="checkbox" id="subShadow" checked style="accent-color:var(--maroon)"></div>
+      <div class="seg" id="subLayerSeg">
+        <button data-v="back" class="on">Behind gradient</button>
+        <button data-v="front">In front of gradient</button>
+      </div>
       <div class="seg" id="dragSeg">
         <button data-v="bg" class="on">Drag moves BG</button>
         <button data-v="sub">Drag moves subject</button>
@@ -1071,7 +1075,7 @@ const state = {
   tAr:'', tEn:'', tScale:100, dragTarget:'bg', feedGuide:true,
   pillar:'Human', gradFlow:1, gEdit:false, selPt:0,
   grain:{amt:0, op:40, seed:3},
-  bgBlur:0, subShadow:true,
+  bgBlur:0, subShadow:true, subFront:false,
   grad:{str:72, op:100, ang:90, pos:0},
   mesh:{op:45, den:100, seed:7},
   perFmt:{}
@@ -1369,18 +1373,21 @@ function render(targetCtx,fmt,preview){
   if(state.bg) drawCover(c,state.bg,W,H,pf,state.type==='INTERVIEW'?state.bgBlur:0);
   else{ c.fillStyle='#444'; c.font='28px sans-serif'; c.textAlign='center';
     c.fillText('Upload a background image',W/2,H/2); }
-  // subject
-  if(state.type==='INTERVIEW'&&state.sub){
+  // subject (layer position depends on state.subFront)
+  const drawSub=()=>{
+    if(state.type!=='INTERVIEW'||!state.sub) return;
     const r=computeSubject(W,H,pf);
     if(state.subShadow){c.save(); c.shadowColor='rgba(0,0,0,.45)'; c.shadowBlur=60*W/1920; c.shadowOffsetX=-14*W/1920; c.shadowOffsetY=10*W/1920;
       c.drawImage(state.sub,r.x,r.y,r.w,r.h); c.restore();}
     else c.drawImage(state.sub,r.x,r.y,r.w,r.h);
-  }
+  };
+  if(!state.subFront) drawSub();
   // gradient + mesh + grain
   const blobs=getBlobs(fmt);
   drawGradient(c,W,H,g,blobs);
   drawMesh(c,W,H,g,state.mesh);
   drawGrain(c,W,H,g);
+  if(state.subFront) drawSub();
   // text — ink-edge aligned exactly at the right margin (pixel-perfect)
   const lay=layoutText(c,F,pf);
   c.textAlign='right'; c.fillStyle='#fff';
@@ -1510,12 +1517,14 @@ function buildSVG(fmt){
     const blurAttr=(state.type==='INTERVIEW'&&state.bgBlur>0)?' filter="url(#bblur)"':'';
     p.push(`<g id="Background"><image x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"${blurAttr} preserveAspectRatio="none" xlink:href="${state.bgData}"/></g>`);
   } else p.push(`<rect width="${W}" height="${H}" fill="#2a2a2a"/>`);
-  // subject
-  if(state.type==='INTERVIEW'&&state.sub&&state.subData){
+  // subject (layer position depends on state.subFront)
+  const subjSvg=()=>{
+    if(!(state.type==='INTERVIEW'&&state.sub&&state.subData)) return '';
     const r=computeSubject(W,H,pf);
     const sh=state.subShadow?' filter="url(#sshadow)"':'';
-    p.push(`<g id="Subject"><image x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"${sh} preserveAspectRatio="none" xlink:href="${state.subData}"/></g>`);
-  }
+    return `<g id="Subject"><image x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"${sh} preserveAspectRatio="none" xlink:href="${state.subData}"/></g>`;
+  };
+  if(!state.subFront&&subjSvg()) p.push(subjSvg());
   // freeform gradient: base wash + colour points, masked by axis falloff
   p.push(`<g id="Gradient" opacity="${o}" mask="url(#fademask)"><rect width="${W}" height="${H}" fill="${light()}"/>`+
     blobs.map((b,i)=>`<rect width="${W}" height="${H}" fill="url(#blob${i})"/>`).join('')+`</g>`);
@@ -1536,6 +1545,7 @@ function buildSVG(fmt){
   // grain
   if(state.grain.amt>0&&state.grain.op>0)
     p.push(`<g id="Grain" mask="url(#fademask)"><rect width="${W}" height="${H}" fill="url(#grainpat)" opacity="${state.grain.op/100}" style="mix-blend-mode:overlay"/></g>`);
+  if(state.subFront&&subjSvg()) p.push(subjSvg());
   // text (live, editable)
   const lay=layoutText(ctx,F,pf);
   ctx.font=`${lay.size}px LusailBlack`; ctx.textAlign='right';
@@ -1611,6 +1621,7 @@ seg($('#fmtTabs'),v=>{
   refresh();
 });
 seg($('#dragSeg'),v=>{state.dragTarget=v;});
+seg($('#subLayerSeg'),v=>{state.subFront=v==='front'; refresh();});
 
 function setRange(sel,val,unit){ const el=$(sel); el.value=val; el.nextElementSibling.textContent=val+(unit||''); }
 function range(sel,unit,cb){
