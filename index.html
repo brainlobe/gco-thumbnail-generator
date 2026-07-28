@@ -1353,9 +1353,9 @@ function computeCover(img,W,H,pf){
 let FILTER_OK=null;
 function canvasFilterOK(){
   if(FILTER_OK===null){
-    const t=document.createElement('canvas').getContext('2d');
-    try{t.filter='blur(1px)';}catch(e){}
-    FILTER_OK=(t.filter==='blur(1px)');
+    // 'filter' must be a real prototype member — assigning it on old Safari
+    // silently creates an inert own property that reads back unchanged.
+    FILTER_OK=(typeof CanvasRenderingContext2D!=='undefined')&&('filter' in CanvasRenderingContext2D.prototype);
   }
   return FILTER_OK;
 }
