@@ -1367,13 +1367,26 @@ function drawCover(c,img,W,H,pf,blur){
     c.filter='none';
   }else if(blur>0){
     // Fallback for browsers without ctx.filter (e.g. older Safari):
-    // approximate gaussian blur by shrinking through halving passes, then scaling back up.
+    // shrink through halving passes to approximate a gaussian, soften at the
+    // small size, then upscale progressively (2x steps) so the result stays
+    // smooth instead of blocky.
+    const mk=(w,h)=>{const t=document.createElement('canvas'); t.width=w; t.height=h; return t;};
     const passes=Math.max(1,Math.min(6,Math.round(Math.log2(blur*2))));
     let src=img, sw=r.w, sh=r.h;
     for(let i=0;i<passes;i++){
       const tw=Math.max(8,Math.round(sw/2)), th=Math.max(8,Math.round(sh/2));
-      const t=document.createElement('canvas'); t.width=tw; t.height=th;
-      const tc=t.getContext('2d');
+      const t=mk(tw,th), tc=t.getContext('2d');
+      tc.imageSmoothingEnabled=true; tc.imageSmoothingQuality='high';
+      tc.drawImage(src,0,0,tw,th);
+      src=t; sw=tw; sh=th;
+    }
+    const bc=src.getContext('2d');
+    bc.globalAlpha=0.3;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) bc.drawImage(src,dx,dy);
+    bc.globalAlpha=1;
+    while(sw*2<r.w){
+      const tw=Math.round(sw*2), th=Math.round(sh*2);
+      const t=mk(tw,th), tc=t.getContext('2d');
       tc.imageSmoothingEnabled=true; tc.imageSmoothingQuality='high';
       tc.drawImage(src,0,0,tw,th);
       src=t; sw=tw; sh=th;
