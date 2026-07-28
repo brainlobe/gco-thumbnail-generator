@@ -81,9 +81,9 @@
       <button data-v="EVERGREEN" class="on">Evergreen</button>
       <button data-v="INTERVIEW">Interview</button>
     </div>
-    <div class="drop" id="dropBg">Background image<br><b>click or drop</b></div>
+    <div class="drop" id="dropBg">Background image<br><b>click or drop</b><br><small style="display:block;opacity:.55;font-weight:400;margin-top:4px">Maximum 10 MB · JPG, PNG, WebP</small></div>
     <div id="interviewCtl" style="display:none">
-      <div class="drop" id="dropSub">Subject cut-out PNG<br><b>click or drop</b></div>
+      <div class="drop" id="dropSub">Subject cut-out PNG<br><b>click or drop</b><br><small style="display:block;opacity:.55;font-weight:400;margin-top:4px">Maximum 10 MB · PNG with transparency</small></div>
       <div class="row"><label>Subject scale</label><input type="range" id="subScale" min="30" max="250" value="100"><output>100%</output></div>
       <div class="row"><label>BG blur</label><input type="range" id="bgBlur" min="0" max="30" value="0"><output>0</output></div>
       <div class="row"><label>Shadow</label><input type="checkbox" id="subShadow" checked style="accent-color:var(--maroon)"></div>
@@ -102,9 +102,9 @@
 
   <div class="sec">
     <h2>Titles</h2>
-    <textarea class="ar" id="tAr" rows="2" placeholder="العنوان بالعربية"></textarea>
+    <textarea class="ar" id="tAr" rows="2" maxlength="40" placeholder="العنوان بالعربية"></textarea>
     <div class="counter" id="cAr">0 / 40</div>
-    <textarea id="tEn" rows="2" placeholder="English title"></textarea>
+    <textarea id="tEn" rows="2" maxlength="40" placeholder="English title"></textarea>
     <div class="counter" id="cEn">0 / 40</div>
     <div class="warnbox" id="warn40">Headline exceeds the 40-character limit (incl. spaces).</div>
     <div class="row"><label>Text scale</label><input type="range" id="tScale" min="80" max="120" value="100"><output>100%</output></div>
@@ -186,7 +186,7 @@
   <div class="statusbar"><span id="dims"></span><span id="exportmsg"></span></div>
 </main>
 
-<input type="file" id="fileBg" accept="image/*" hidden>
+<input type="file" id="fileBg" accept="image/png,image/jpeg,image/webp" hidden>
 <input type="file" id="fileSub" accept="image/png" hidden>
 
 <div id="modalWrap" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:50; align-items:center; justify-content:center">
@@ -1041,11 +1041,11 @@ function logoNested(x,y,w,h){
 // ---------- format specs ----------
 const FMTS = {
   YT : {w:1920, h:1080, fMin:75, fMax:100, logo:{h:100, right:100, top:100},
-        textRight:100, textLeftBound:1010, gDef:{str:72, op:100, ang:90, pos:0}, vDef:50},
+        textRight:100, textLeftBound:1010, textBottom:350, gDef:{str:72, op:100, ang:90, pos:0}, vDef:50},
   LI : {w:1080, h:1080, fMin:50, fMax:75,  logo:{h:100, right:100, top:100},
-        textRight:100, textLeftBound:100,  gDef:{str:72, op:100, ang:90, pos:0}, vDef:42},
+        textRight:100, textLeftBound:500,  gDef:{str:72, op:100, ang:90, pos:0}, vDef:42},
   IGR: {w:1080, h:1920, fMin:60, fMax:100, logo:{h:100, right:100, bottom:335},
-        textRight:100, textLeftBound:100,  gDef:{str:60, op:100, ang:180, pos:0}, vDef:78}
+        textRight:100, textLeftBound:250,  textTop:980, gDef:{str:60, op:100, ang:180, pos:0}, vDef:78}
 };
 const SUFFIX = {YT:'YT', LI:'LI', IGR:'IGR'};
 // ---------- pillar colour themes ----------
@@ -1095,7 +1095,16 @@ let fontReady = document.fonts.load("100px LusailBlack").then(()=>document.fonts
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), ctx = cv.getContext('2d');
 
+const MAX_IMG_MB = 10;
 function loadImageFile(file, cb){
+  if(file.size > MAX_IMG_MB*1024*1024){
+    alert(`Image is ${(file.size/1048576).toFixed(1)} MB — maximum is ${MAX_IMG_MB} MB.`);
+    return;
+  }
+  if(!/^image\/(png|jpe?g|webp)$/i.test(file.type)){
+    alert('Unsupported format — please use JPG, PNG or WebP.');
+    return;
+  }
   const r = new FileReader();
   r.onload = e => { const im = new Image(); im.onload = ()=>cb(im, e.target.result); im.src = e.target.result; };
   r.readAsDataURL(file);
@@ -1198,9 +1207,31 @@ function drawGradient(c,W,H,g,blobs){
     rg.addColorStop(0,hexA(col,b.a)); rg.addColorStop(1,hexA(col,0));
     mc.fillStyle=rg; mc.fillRect(0,0,W,H);
   }
+  // subtle dither breaks up 8-bit banding on wide, gentle gradients
+  mc.save();
+  mc.globalCompositeOperation='overlay';
+  mc.globalAlpha=0.025;
+  mc.fillStyle=mc.createPattern(ditherTile(),'repeat');
+  mc.fillRect(0,0,W,H);
+  mc.restore();
   mc.globalCompositeOperation='destination-in';
   mc.drawImage(gradAlphaCanvas(W,H,g),0,0);
   c.globalAlpha=o; c.drawImage(oc,0,0); c.globalAlpha=1;
+}
+let _dither=null;
+function ditherTile(){
+  if(_dither) return _dither;
+  const t=document.createElement('canvas'); t.width=t.height=128;
+  const tc=t.getContext('2d');
+  const id=tc.createImageData(128,128);
+  const rnd=mulberry32(97531);
+  for(let i=0;i<id.data.length;i+=4){
+    const v=Math.round(rnd()*255);
+    id.data[i]=id.data[i+1]=id.data[i+2]=v; id.data[i+3]=255;
+  }
+  tc.putImageData(id,0,0);
+  _dither=t;
+  return t;
 }
 // ---------- grain ----------
 let _grain={key:null, tile:null};
@@ -1235,7 +1266,24 @@ function drawGrain(c,W,H,g){
   c.drawImage(oc,0,0);
   c.restore();
 }
-const FADE_STOPS=[[0,1],[0.45,0.92],[0.75,0.5],[1,0]];
+// Designed falloff control points; sampled through a monotone cubic so the
+// alpha curve is C1-smooth (no visible "waves" at stop boundaries).
+const FADE_PTS=[[0,1],[0.45,0.92],[0.75,0.5],[1,0]];
+const FADE_STOPS=(()=>{
+  const P=FADE_PTS, n=P.length, out=[], N=32;
+  for(let s=0;s<=N;s++){
+    const t=s/N;
+    let i=0; while(i<n-2&&t>P[i+1][0]) i++;
+    const [x1,y1]=P[i], [x2,y2]=P[i+1];
+    const [x0,y0]=P[Math.max(0,i-1)], [x3,y3]=P[Math.min(n-1,i+2)];
+    const h=x2-x1, u=(t-x1)/h;
+    const m1=(i===0)?(y2-y1)/h:(y2-y0)/(x2-x0);
+    const m2=(i===n-2)?(y2-y1)/h:(y3-y1)/(x3-x1);
+    const y=y1+m1*h*u+(3*(y2-y1)-2*m1*h-m2*h)*u*u+(-2*(y2-y1)+m1*h+m2*h)*u*u*u;
+    out.push([t,Math.max(0,Math.min(1,Math.round(y*10000)/10000))]);
+  }
+  return out;
+})();
 function gradAlphaCanvas(W,H,g){
   const oc=document.createElement('canvas'); oc.width=W; oc.height=H;
   const c=oc.getContext('2d');
@@ -1322,8 +1370,8 @@ function layoutText(c,F,pf){
   const maxW=F.w-F.textRight-F.textLeftBound;
   const base=(F.fMin+F.fMax)/2;
   let size=Math.max(F.fMin,Math.min(F.fMax, base*state.tScale/100));
-  const zoneTop=(F.logo.top!==undefined)?(F.logo.top+F.logo.h+50):100;
-  const zoneBot=(F.logo.bottom!==undefined)?(F.h-F.logo.bottom-F.logo.h-50):(F.h-100);
+  const zoneTop=(F.textTop!==undefined)?F.textTop:((F.logo.top!==undefined)?(F.logo.top+F.logo.h+50):100);
+  const zoneBot=(F.textBottom!==undefined)?(F.h-F.textBottom):((F.logo.bottom!==undefined)?(F.h-F.logo.bottom-F.logo.h-50):(F.h-100));
   const zoneH=zoneBot-zoneTop;
   let fit=null;
   while(size>=24){
